@@ -70,15 +70,6 @@ else
   call s:attribute_highlight('ad')
 endif
 
-if exists("g:ansible_name_highlight")
-  execute 'syn keyword ansible_name name containedin='.s:yamlKey.' contained'
-  if g:ansible_name_highlight =~ 'd'
-    highlight link ansible_name Comment
-  else
-    highlight default link ansible_name Underlined
-  endif
-endif
-
 execute 'syn keyword ansible_debug_keywords debug containedin='.s:yamlKey.' contained'
 highlight default link ansible_debug_keywords Debug
 
@@ -122,5 +113,14 @@ elseif exists("g:ansible_with_keywords_highlight")
 else
   highlight default link ansible_loop_keywords Statement
 endif
+
+" Better task name highlighting
+syn match ansible_name "\v^\s*-\sname\:\s.*" contains=ansible_task_name keepend
+syn region ansible_task_name start="[^- name: ]" end="$" contained
+
+" Added TODO highlight
+syn match ansible_todo "TODO\:\s.*" contains=ansible_todo_key containedin=,yamlComment,jinjaComment keepend
+syn region ansible_todo_key start="[^TODO:]" end="$" contained
+
 
 let b:current_syntax = "ansible"
