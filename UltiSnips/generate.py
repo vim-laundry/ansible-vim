@@ -43,18 +43,29 @@ def get_files_builtin() -> List[str]:
 
     return sorted(file_names)
 
-def get_files_user() -> List[str]:
-    """Return the sorted list of all module files provided by collections installed in the
-    user home folder ~/.ansible/collections/
+
+def get_files_collections(user: bool = False) -> List[str]:
+    """Return the sorted list of all module files provided by collections installed in either
+    the system folder /usr/share/ansible/collections/ or user folder ~/.ansible/collections/
+
+    Parameters
+    ----------
+    user: bool (default: False)
+        A boolean indicating whether to get collections installed in the user folder
 
     Returns
     -------
     List[str]
-        A list of strings representing the Python module files installed in ~/.ansible/collections/
+        A list of strings representing the Python module files provided by collections
     """
 
+    if user:
+        collection_path = '~/.ansible/collections/ansible_collections/'
+    else:
+        collection_path = '/usr/share/ansible/collections/ansible_collections/'
+
     file_names: List[str] = []
-    for root, dirs, files in os.walk(os.path.expanduser('~/.ansible/collections/ansible_collections/')):
+    for root, dirs, files in os.walk(os.path.expanduser(collection_path)):
         files_without_symlinks = []
         for f in files:
             if not os.path.islink(os.path.join(root, f)):
@@ -150,7 +161,7 @@ def option_data_to_snippet_completion(option_data: Any) -> str:
             return "false"
 
     # if there is no default and no choices, return the description
-    if not choices and default is None:
+    if not choices and default is None and not args.no_description:
         return f"# {description}"
 
     # if there is a default but no choices return the default as string
@@ -220,7 +231,7 @@ def module_options_to_snippet_options(module_options: Any) -> List[str]:
 
     # insert an empty option above the list of non-required options
     for index, (_, option) in enumerate(module_options):
-        if not option.get("required"):
+        if not option.get("required") and not args.comment_non_required:
             if index != 0:
                 module_options.insert(index, (None, None))
             break
@@ -230,14 +241,19 @@ def module_options_to_snippet_options(module_options: Any) -> List[str]:
         if not name and not option_data:
             options += [""]
         else:
+            # set comment character for non-required options
+            if not option_data.get("required") and args.comment_non_required:
+                comment = "#"
+            else:
+                comment = ""
             # the free_form option in some modules are special
             if name == "free_form":
                 options += [
-                    f"\t${{{index}:{name}{delimiter}{option_data_to_snippet_completion(option_data)}}}"
+                    f"\t{comment}${{{index}:{name}{delimiter}{option_data_to_snippet_completion(option_data)}}}"
                 ]
             else:
                 options += [
-                    f"\t{name}{delimiter}${{{index}:{option_data_to_snippet_completion(option_data)}}}"
+                    f"\t{comment}{name}{delimiter}${{{index}:{option_data_to_snippet_completion(option_data)}}}"
                 ]
 
     return options
@@ -316,6 +332,18 @@ if __name__ == "__main__":
         action="store_true",
         default=False
     )
+    parser.add_argument(
+        '--no-description',
+        help="Remove options description",
+        action="store_true",
+        default=False
+    )
+    parser.add_argument(
+        '--comment-non-required',
+        help="Comment non-required options",
+        action="store_true",
+        default=False
+    )
     args = parser.parse_args()
 
 
@@ -336,8 +364,16 @@ if __name__ == "__main__":
             docstring_builtin['collection_name'] = "ansible.builtin"
             modules_docstrings.append(docstring_builtin)
 
+    system_modules_paths = get_files_collections()
+    for f in system_modules_paths:
+        docstring_system = get_module_docstring(f)
+        if docstring_system and docstring_system not in modules_docstrings:
+            collection_name = get_collection_name(f)
+            docstring_system['collection_name'] = collection_name
+            modules_docstrings.append(docstring_system)
+
     if args.user:
-        user_modules_paths = get_files_user()
+        user_modules_paths = get_files_collections(user=True)
         for f in user_modules_paths:
             docstring_user = get_module_docstring(f)
             if docstring_user and docstring_user not in modules_docstrings:
